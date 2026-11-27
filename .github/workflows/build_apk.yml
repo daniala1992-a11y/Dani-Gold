@@ -12,6 +12,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -21,9 +27,9 @@ jobs:
       - name: Create clean Flutter app
         run: flutter create --platforms=android app_build
 
-      - name: Upgrade Gradle wrapper for Java compatibility
+      - name: Upgrade Gradle wrapper for Java 21 compatibility
         run: |
-          sed -i 's/gradle-[0-9.]*-all.zip/gradle-8.7-all.zip/g' app_build/android/gradle/wrapper/gradle-wrapper.properties
+          sed -i 's/gradle-[0-9.]*-all.zip/gradle-8.9-all.zip/g' app_build/android/gradle/wrapper/gradle-wrapper.properties
           cat app_build/android/gradle/wrapper/gradle-wrapper.properties
 
       - name: Write pubspec.yaml inside app_build
