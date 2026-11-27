@@ -36,9 +36,9 @@ jobs:
         run: |
           cat << 'EOF' > app_build/pubspec.yaml
           name: dani_gold
-          description: Gold weight, density, and cut-line calculator.
+          description: Dani Boresh - Gold and silver bar cut length calculator in cm.
           publish_to: 'none'
-          version: 1.0.0+1
+          version: 1.0.0+6
 
           environment:
             sdk: '>=3.2.0 <4.0.0'
@@ -46,6 +46,7 @@ jobs:
           dependencies:
             flutter:
               sdk: flutter
+            image_picker: ^1.1.2
 
           dev_dependencies:
             flutter_test:
@@ -60,107 +61,408 @@ jobs:
         run: |
           mkdir -p app_build/lib
           cat << 'EOF' > app_build/lib/main.dart
+          import 'dart:io';
+          import 'dart:math' as math;
           import 'package:flutter/material.dart';
+          import 'package:image_picker/image_picker.dart';
 
           void main() {
-            runApp(const DaniGoldApp());
+            runApp(const DaniBoreshApp());
           }
 
-          class DaniGoldApp extends StatelessWidget {
-            const DaniGoldApp({super.key});
+          class DaniBoreshApp extends StatelessWidget {
+            const DaniBoreshApp({super.key});
 
             @override
             Widget build(BuildContext context) {
               return MaterialApp(
                 debugShowCheckedModeBanner: false,
-                title: 'عیارسنجی و برش طلا',
+                title: 'دانی برش',
                 theme: ThemeData(
                   colorScheme: ColorScheme.fromSeed(seedColor: Colors.amber),
                   useMaterial3: true,
                 ),
-                home: const GoldCalculatorPage(),
+                home: const DaniBoreshPage(),
               );
             }
           }
 
-          class GoldCalculatorPage extends StatefulWidget {
-            const GoldCalculatorPage({super.key});
+          class DaniBoreshPage extends StatefulWidget {
+            const DaniBoreshPage({super.key});
 
             @override
-            State<GoldCalculatorPage> createState() => _GoldCalculatorPageState();
+            State<DaniBoreshPage> createState() => _DaniBoreshPageState();
           }
 
-          class _GoldCalculatorPageState extends State<GoldCalculatorPage> {
+          class _DaniBoreshPageState extends State<DaniBoreshPage> {
+            final List<String> _metals = ['طلا', 'نقره'];
+            String _selectedMetal = 'طلا';
+
+            final List<String> _shapes = [
+              'مستطیل',
+              'مربع',
+              'دایره',
+              'نیم‌دایره',
+              'مثلث',
+              'ذوزنقه',
+              'نامنظم (ورود مساحت/عکس مرجع)',
+            ];
+            String _selectedShape = 'مستطیل';
+
+            final ImagePicker _picker = ImagePicker();
+            File? _pickedImage;
+
             final TextEditingController _karatController = TextEditingController(text: '18');
-            final TextEditingController _volumeController = TextEditingController(text: '1.0');
-            final TextEditingController _totalWeightController = TextEditingController(text: '10.0');
-            final TextEditingController _targetWeightController = TextEditingController(text: '3.0');
-            final TextEditingController _totalLengthController = TextEditingController(text: '50.0');
+            final TextEditingController _lengthController = TextEditingController(text: '10.0');
+            final TextEditingController _widthController = TextEditingController(text: '2.0');
+            final TextEditingController _thicknessController = TextEditingController(text: '0.5');
+            final TextEditingController _squareSideController = TextEditingController(text: '1.5');
+            final TextEditingController _diameterController = TextEditingController(text: '1.5');
+            final TextEditingController _triBaseController = TextEditingController(text: '2.0');
+            final TextEditingController _triHeightController = TextEditingController(text: '1.5');
+            final TextEditingController _trapBaseBigController = TextEditingController(text: '2.5');
+            final TextEditingController _trapBaseSmallController = TextEditingController(text: '1.5');
+            final TextEditingController _trapHeightController = TextEditingController(text: '1.0');
+            final TextEditingController _manualAreaController = TextEditingController(text: '2.0');
+            final TextEditingController _actualWeightController = TextEditingController(text: '');
+            final TextEditingController _targetWeightController = TextEditingController(text: '15.0');
 
-            String _resultText = 'مقادیر را وارد کرده و دکمه محاسبه را بزنید.';
+            String _resultText = 'نوع فلز (طلا یا نقره)، عیار و ابعاد را وارد کرده و محاسبه را بزنید.';
 
-            double _densityFromKarat(double karat) {
-              if (karat >= 24) return 19.32;
-              if (karat >= 21) return 17.55;
-              if (karat >= 18) return 15.58;
-              if (karat >= 14) return 13.07;
-              return 19.32;
+            double _goldDensity(double purity) {
+              if (purity > 100) {
+                // اگر عیار به صورت هزارم وارد شود مثل 750 یا 999
+                if (purity >= 990) return 19.32;
+                if (purity >= 916) return 17.55;
+                if (purity >= 750) return 15.58;
+                if (purity >= 583) return 13.07;
+                return 15.58;
+              }
+              if (purity >= 24) return 19.32;
+              if (purity >= 21) return 17.55;
+              if (purity >= 18) return 15.58;
+              if (purity >= 14) return 13.07;
+              return 15.58;
+            }
+
+            double _silverDensity(double purity) {
+              if (purity > 100) {
+                // عیار نقره به صورت هزارم مثل 999، 925، 800
+                if (purity >= 990) return 10.49;
+                if (purity >= 920) return 10.36;
+                if (purity >= 790) return 10.20;
+                return 10.49;
+              }
+              if (purity >= 23.5) return 10.49;
+              if (purity >= 22) return 10.36;
+              return 10.20;
+            }
+
+            double _densityForMetal(double purity) {
+              if (_selectedMetal == 'نقره') {
+                return _silverDensity(purity);
+              }
+              return _goldDensity(purity);
+            }
+
+            double _parseNum(TextEditingController c, {double fallback = 0}) {
+              final raw = c.text.trim().replaceAll('/', '.').replaceAll('٬', '').replaceAll(',', '.');
+              return double.tryParse(raw) ?? fallback;
+            }
+
+            void _onMetalChanged(String newMetal) {
+              setState(() {
+                _selectedMetal = newMetal;
+                if (newMetal == 'نقره') {
+                  _karatController.text = '999';
+                } else {
+                  _karatController.text = '18';
+                }
+              });
+            }
+
+            Future<void> _pickImage(ImageSource source) async {
+              final XFile? file = await _picker.pickImage(source: source, imageQuality: 80);
+              if (file != null) {
+                setState(() {
+                  _pickedImage = File(file.path);
+                });
+              }
+            }
+
+            void _clearFields() {
+              _karatController.clear();
+              _lengthController.clear();
+              _widthController.clear();
+              _thicknessController.clear();
+              _squareSideController.clear();
+              _diameterController.clear();
+              _triBaseController.clear();
+              _triHeightController.clear();
+              _trapBaseBigController.clear();
+              _trapBaseSmallController.clear();
+              _trapHeightController.clear();
+              _manualAreaController.clear();
+              _actualWeightController.clear();
+              _targetWeightController.clear();
+              setState(() {
+                _pickedImage = null;
+                _resultText = 'همه فیلدها پاک شدند.';
+              });
             }
 
             void _calculate() {
-              final karat = double.tryParse(_karatController.text.replaceAll('/', '.')) ?? 18;
-              final volume = double.tryParse(_volumeController.text.replaceAll('/', '.')) ?? 0;
-              final totalWeight = double.tryParse(_totalWeightController.text.replaceAll('/', '.')) ?? 0;
-              final targetWeight = double.tryParse(_targetWeightController.text.replaceAll('/', '.')) ?? 0;
-              final totalLength = double.tryParse(_totalLengthController.text.replaceAll('/', '.')) ?? 0;
+              final defaultPurity = _selectedMetal == 'نقره' ? 999.0 : 18.0;
+              final purity = _parseNum(_karatController, fallback: defaultPurity);
+              final lengthCm = _parseNum(_lengthController);
+              final thicknessCm = _parseNum(_thicknessController);
+              final actualWeightGr = double.tryParse(
+                _actualWeightController.text.trim().replaceAll('/', '.').replaceAll(',', '.'),
+              );
+              final targetWeightGr = _parseNum(_targetWeightController);
+              final tableDensity = _densityForMetal(purity);
 
-              final density = _densityFromKarat(karat);
-              final weightFromVolume = volume * density;
-              final cutLine = (totalWeight > 0 && totalLength > 0)
-                  ? (targetWeight / totalWeight) * totalLength
+              double crossSectionCm2 = 0;
+              if (_selectedShape == 'مستطیل') {
+                final w = _parseNum(_widthController);
+                crossSectionCm2 = w * thicknessCm;
+              } else if (_selectedShape == 'مربع') {
+                final s = _parseNum(_squareSideController);
+                crossSectionCm2 = s * s;
+              } else if (_selectedShape == 'دایره') {
+                final d = _parseNum(_diameterController);
+                final r = d / 2.0;
+                crossSectionCm2 = math.pi * r * r;
+              } else if (_selectedShape == 'نیم‌دایره') {
+                final d = _parseNum(_diameterController);
+                final r = d / 2.0;
+                crossSectionCm2 = 0.5 * math.pi * r * r;
+              } else if (_selectedShape == 'مثلث') {
+                final b = _parseNum(_triBaseController);
+                final h = _parseNum(_triHeightController);
+                crossSectionCm2 = 0.5 * b * h;
+              } else if (_selectedShape == 'ذوزنقه') {
+                final bBig = _parseNum(_trapBaseBigController);
+                final bSmall = _parseNum(_trapBaseSmallController);
+                final h = _parseNum(_trapHeightController);
+                crossSectionCm2 = ((bBig + bSmall) / 2.0) * h;
+              } else {
+                crossSectionCm2 = _parseNum(_manualAreaController);
+              }
+
+              final totalVolumeCm3 = (lengthCm > 0)
+                  ? (crossSectionCm2 * lengthCm)
+                  : (crossSectionCm2 * thicknessCm);
+
+              final double effectiveDensity =
+                  (actualWeightGr != null && actualWeightGr > 0 && totalVolumeCm3 > 0)
+                      ? (actualWeightGr / totalVolumeCm3)
+                      : tableDensity;
+
+              final theoreticalWeightGr = totalVolumeCm3 * tableDensity;
+              final weightPerCmGr = crossSectionCm2 * effectiveDensity;
+              final cutLengthCm = (weightPerCmGr > 0 && targetWeightGr > 0)
+                  ? (targetWeightGr / weightPerCmGr)
                   : 0.0;
 
               setState(() {
                 _resultText =
-                    'چگالی تخمینی (${karat.toStringAsFixed(1)} عیار): ${density.toStringAsFixed(2)} g/cm³\n'
-                    'وزن بر اساس حجم: ${weightFromVolume.toStringAsFixed(3)} گرم\n'
-                    'محل خط برش برای ${targetWeight.toStringAsFixed(3)} گرم: ${cutLine.toStringAsFixed(2)} واحد طول';
+                    'نوع فلز: $_selectedMetal | شکل: $_selectedShape\n'
+                    'عیار واردشده: ${purity.toStringAsFixed(0)}\n'
+                    'مساحت مقطع / سطح: ${crossSectionCm2.toStringAsFixed(3)} سانتی‌متر مربع\n'
+                    'حجم کل محاسبه‌شده: ${totalVolumeCm3.toStringAsFixed(3)} سانتی‌متر مکعب\n'
+                    'چگالی جدولی $_selectedMetal: ${tableDensity.toStringAsFixed(2)} گرم بر سانتی‌متر مکعب\n'
+                    'چگالی مؤثر: ${effectiveDensity.toStringAsFixed(2)} گرم بر سانتی‌متر مکعب\n'
+                    'وزن کل تئوری شمش: ${theoreticalWeightGr.toStringAsFixed(3)} گرم\n'
+                    'وزن هر ۱ سانتی‌متر طول: ${weightPerCmGr.toStringAsFixed(3)} گرم بر سانتی‌متر\n'
+                    'اندازه برش برای ${targetWeightGr.toStringAsFixed(3)} گرم: ${cutLengthCm.toStringAsFixed(2)} سانتی‌متر';
               });
+            }
+
+            List<Widget> _shapeFields() {
+              if (_selectedShape == 'مستطیل') {
+                return [
+                  TextField(
+                    controller: _widthController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'عرض شمش (سانتی‌متر)'),
+                  ),
+                  TextField(
+                    controller: _thicknessController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'ضخامت شمش (سانتی‌متر)'),
+                  ),
+                ];
+              }
+              if (_selectedShape == 'مربع') {
+                return [
+                  TextField(
+                    controller: _squareSideController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'ضلع مقطع مربع (سانتی‌متر)'),
+                  ),
+                ];
+              }
+              if (_selectedShape == 'دایره' || _selectedShape == 'نیم‌دایره') {
+                return [
+                  TextField(
+                    controller: _diameterController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'قطر شمش (سانتی‌متر)'),
+                  ),
+                  TextField(
+                    controller: _thicknessController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'ضخامت شمش (سانتی‌متر)'),
+                  ),
+                ];
+              }
+              if (_selectedShape == 'مثلث') {
+                return [
+                  TextField(
+                    controller: _triBaseController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'قاعده مثلث (سانتی‌متر)'),
+                  ),
+                  TextField(
+                    controller: _triHeightController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'ارتفاع مثلث (سانتی‌متر)'),
+                  ),
+                  TextField(
+                    controller: _thicknessController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'ضخامت شمش (سانتی‌متر)'),
+                  ),
+                ];
+              }
+              if (_selectedShape == 'ذوزنقه') {
+                return [
+                  TextField(
+                    controller: _trapBaseBigController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'قاعده بزرگ ذوزنقه (سانتی‌متر)'),
+                  ),
+                  TextField(
+                    controller: _trapBaseSmallController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'قاعده کوچک ذوزنقه (سانتی‌متر)'),
+                  ),
+                  TextField(
+                    controller: _trapHeightController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'ارتفاع ذوزنقه (سانتی‌متر)'),
+                  ),
+                  TextField(
+                    controller: _thicknessController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(labelText: 'ضخامت شمش (سانتی‌متر)'),
+                  ),
+                ];
+              }
+              return [
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => _pickImage(ImageSource.gallery),
+                        child: const Text('انتخاب عکس از گالری'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => _pickImage(ImageSource.camera),
+                        child: const Text('گرفتن عکس با دوربین'),
+                      ),
+                    ),
+                  ],
+                ),
+                if (_pickedImage != null) ...[
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.file(_pickedImage!, height: 180, fit: BoxFit.cover),
+                  ),
+                ],
+                TextField(
+                  controller: _manualAreaController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'مساحت مقطع / سطح (سانتی‌متر مربع)'),
+                ),
+                TextField(
+                  controller: _thicknessController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'ضخامت شمش (سانتی‌متر)'),
+                ),
+              ];
             }
 
             @override
             Widget build(BuildContext context) {
+              final appBarColor = _selectedMetal == 'نقره'
+                  ? Colors.blueGrey.shade100
+                  : Colors.amber.shade200;
+
               return Directionality(
                 textDirection: TextDirection.rtl,
                 child: Scaffold(
                   appBar: AppBar(
-                    title: const Text('محاسبات طلا و خط برش'),
-                    backgroundColor: Colors.amber.shade200,
+                    title: const Text('دانی برش'),
+                    backgroundColor: appBarColor,
                   ),
                   body: SingleChildScrollView(
                     padding: const EdgeInsets.all(16),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        DropdownButtonFormField<String>(
+                          value: _selectedMetal,
+                          decoration: const InputDecoration(labelText: 'نوع فلز را انتخاب کنید'),
+                          items: _metals
+                              .map((m) => DropdownMenuItem<String>(value: m, child: Text(m)))
+                              .toList(),
+                          onChanged: (val) {
+                            if (val != null) {
+                              _onMetalChanged(val);
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String>(
+                          value: _selectedShape,
+                          decoration: const InputDecoration(labelText: 'شکل یا حالت شمش را انتخاب کنید'),
+                          items: _shapes
+                              .map((s) => DropdownMenuItem<String>(value: s, child: Text(s)))
+                              .toList(),
+                          onChanged: (val) {
+                            if (val != null) {
+                              setState(() {
+                                _selectedShape = val;
+                              });
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 8),
                         TextField(
                           controller: _karatController,
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          decoration: const InputDecoration(labelText: 'عیار (مثلاً 18 یا 21 یا 24)'),
+                          decoration: InputDecoration(
+                            labelText: _selectedMetal == 'نقره'
+                                ? 'عیار نقره (مثلاً 999، 925 یا 800)'
+                                : 'عیار طلا (مثلاً 18، 21، 24 یا 750)',
+                          ),
                         ),
                         TextField(
-                          controller: _volumeController,
+                          controller: _lengthController,
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          decoration: const InputDecoration(labelText: 'حجم قطعه (سانتی‌متر مکعب)'),
+                          decoration: const InputDecoration(labelText: 'طول کل شمش (سانتی‌متر)'),
                         ),
+                        ..._shapeFields(),
                         TextField(
-                          controller: _totalWeightController,
+                          controller: _actualWeightController,
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          decoration: const InputDecoration(labelText: 'وزن کل قطعه یا شمش (گرم)'),
-                        ),
-                        TextField(
-                          controller: _totalLengthController,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          decoration: const InputDecoration(labelText: 'طول کل قطعه یا شمش (سانتی‌متر/میلی‌متر)'),
+                          decoration: const InputDecoration(labelText: 'وزن کل واقعی شمش - اختیاری (گرم)'),
                         ),
                         TextField(
                           controller: _targetWeightController,
@@ -168,9 +470,20 @@ jobs:
                           decoration: const InputDecoration(labelText: 'وزن مورد نیاز برای برش (گرم)'),
                         ),
                         const SizedBox(height: 16),
-                        ElevatedButton(
-                          onPressed: _calculate,
-                          child: const Text('محاسبه کن'),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: _calculate,
+                                child: const Text('محاسبه برش (سانتی‌متر)'),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            OutlinedButton(
+                              onPressed: _clearFields,
+                              child: const Text('پاک کردن'),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 16),
                         Card(
