@@ -18,12 +18,12 @@ jobs:
           flutter-version: '3.24.0'
           channel: 'stable'
 
-      - name: Initialize Flutter Android project
-        run: flutter create --platforms=android .
+      - name: Create clean Flutter app
+        run: flutter create --platforms=android app_build
 
-      - name: Write pubspec.yaml
+      - name: Write pubspec.yaml inside app_build
         run: |
-          cat << 'EOF' > pubspec.yaml
+          cat << 'EOF' > app_build/pubspec.yaml
           name: dani_gold
           description: Gold weight, density, and cut-line calculator.
           publish_to: 'none'
@@ -45,10 +45,10 @@ jobs:
             uses-material-design: true
           EOF
 
-      - name: Write lib/main.dart
+      - name: Write lib/main.dart inside app_build
         run: |
-          mkdir -p lib
-          cat << 'EOF' > lib/main.dart
+          mkdir -p app_build/lib
+          cat << 'EOF' > app_build/lib/main.dart
           import 'package:flutter/material.dart';
 
           void main() {
@@ -178,13 +178,15 @@ jobs:
           EOF
 
       - name: Get dependencies
+        working-directory: app_build
         run: flutter pub get
 
       - name: Build APK
+        working-directory: app_build
         run: flutter build apk --release
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: gold-app-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: app_build/build/app/outputs/flutter-apk/app-release.apk
