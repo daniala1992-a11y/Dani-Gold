@@ -18,6 +18,165 @@ jobs:
           flutter-version: '3.24.0'
           channel: 'stable'
 
+      - name: Initialize Flutter Android project
+        run: flutter create --platforms=android .
+
+      - name: Write pubspec.yaml
+        run: |
+          cat << 'EOF' > pubspec.yaml
+          name: dani_gold
+          description: Gold weight, density, and cut-line calculator.
+          publish_to: 'none'
+          version: 1.0.0+1
+
+          environment:
+            sdk: '>=3.2.0 <4.0.0'
+
+          dependencies:
+            flutter:
+              sdk: flutter
+
+          dev_dependencies:
+            flutter_test:
+              sdk: flutter
+            flutter_lints: ^3.0.0
+
+          flutter:
+            uses-material-design: true
+          EOF
+
+      - name: Write lib/main.dart
+        run: |
+          mkdir -p lib
+          cat << 'EOF' > lib/main.dart
+          import 'package:flutter/material.dart';
+
+          void main() {
+            runApp(const DaniGoldApp());
+          }
+
+          class DaniGoldApp extends StatelessWidget {
+            const DaniGoldApp({super.key});
+
+            @override
+            Widget build(BuildContext context) {
+              return MaterialApp(
+                debugShowCheckedModeBanner: false,
+                title: 'عیارسنجی و برش طلا',
+                theme: ThemeData(
+                  colorScheme: ColorScheme.fromSeed(seedColor: Colors.amber),
+                  useMaterial3: true,
+                ),
+                home: const GoldCalculatorPage(),
+              );
+            }
+          }
+
+          class GoldCalculatorPage extends StatefulWidget {
+            const GoldCalculatorPage({super.key});
+
+            @override
+            State<GoldCalculatorPage> createState() => _GoldCalculatorPageState();
+          }
+
+          class _GoldCalculatorPageState extends State<GoldCalculatorPage> {
+            final TextEditingController _karatController = TextEditingController(text: '18');
+            final TextEditingController _volumeController = TextEditingController(text: '1.0');
+            final TextEditingController _totalWeightController = TextEditingController(text: '10.0');
+            final TextEditingController _targetWeightController = TextEditingController(text: '3.0');
+            final TextEditingController _totalLengthController = TextEditingController(text: '50.0');
+
+            String _resultText = 'مقادیر را وارد کرده و دکمه محاسبه را بزنید.';
+
+            double _densityFromKarat(double karat) {
+              if (karat >= 24) return 19.32;
+              if (karat >= 21) return 17.55;
+              if (karat >= 18) return 15.58;
+              if (karat >= 14) return 13.07;
+              return 19.32;
+            }
+
+            void _calculate() {
+              final karat = double.tryParse(_karatController.text.replaceAll('/', '.')) ?? 18;
+              final volume = double.tryParse(_volumeController.text.replaceAll('/', '.')) ?? 0;
+              final totalWeight = double.tryParse(_totalWeightController.text.replaceAll('/', '.')) ?? 0;
+              final targetWeight = double.tryParse(_targetWeightController.text.replaceAll('/', '.')) ?? 0;
+              final totalLength = double.tryParse(_totalLengthController.text.replaceAll('/', '.')) ?? 0;
+
+              final density = _densityFromKarat(karat);
+              final weightFromVolume = volume * density;
+              final cutLine = (totalWeight > 0 && totalLength > 0)
+                  ? (targetWeight / totalWeight) * totalLength
+                  : 0.0;
+
+              setState(() {
+                _resultText =
+                    'چگالی تخمینی (${karat.toStringAsFixed(1)} عیار): ${density.toStringAsFixed(2)} g/cm³\n'
+                    'وزن بر اساس حجم: ${weightFromVolume.toStringAsFixed(3)} گرم\n'
+                    'محل خط برش برای ${targetWeight.toStringAsFixed(3)} گرم: ${cutLine.toStringAsFixed(2)} واحد طول';
+              });
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              return Directionality(
+                textDirection: TextDirection.rtl,
+                child: Scaffold(
+                  appBar: AppBar(
+                    title: const Text('محاسبات طلا و خط برش'),
+                    backgroundColor: Colors.amber.shade200,
+                  ),
+                  body: SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        TextField(
+                          controller: _karatController,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: const InputDecoration(labelText: 'عیار (مثلاً 18 یا 21 یا 24)'),
+                        ),
+                        TextField(
+                          controller: _volumeController,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: const InputDecoration(labelText: 'حجم قطعه (سانتی‌متر مکعب)'),
+                        ),
+                        TextField(
+                          controller: _totalWeightController,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: const InputDecoration(labelText: 'وزن کل قطعه یا شمش (گرم)'),
+                        ),
+                        TextField(
+                          controller: _totalLengthController,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: const InputDecoration(labelText: 'طول کل قطعه یا شمش (سانتی‌متر/میلی‌متر)'),
+                        ),
+                        TextField(
+                          controller: _targetWeightController,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: const InputDecoration(labelText: 'وزن مورد نیاز برای برش (گرم)'),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: _calculate,
+                          child: const Text('محاسبه کن'),
+                        ),
+                        const SizedBox(height: 16),
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(14),
+                            child: Text(_resultText),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
+          }
+          EOF
+
       - name: Get dependencies
         run: flutter pub get
 
